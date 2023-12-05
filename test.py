@@ -118,9 +118,13 @@ EOS_token = END_IDX
 # >>> DataFrame['column'].apply(str.lower).apply(word_tokenize)
 
 # Also we added the START and the END symbol to the sentences. 
-english_sents = [START] + df['English'].apply(str.lower).apply(word_tokenize) + [END]
-indo_sents = [START] + df['Indonesian'].apply(str.lower).apply(word_tokenize) + [END]
+# english_sents = [START] + df['English'].apply(str.lower).apply(word_tokenize) + [END]
+df['English'] = df['English'].apply(str.lower).apply(word_tokenize)
+df['Indonesian'] = df['Indonesian'].apply(str.lower).apply(word_tokenize)
 
+# indo_sents = [START] + df['Indonesian'].apply(str.lower).apply(word_tokenize) + [END]
+english_sents = [['<s>'] + sent + ['</s>'] for sent in df['English']]
+indo_sents = [['<s>'] + sent + ['</s>'] for sent in df['Indonesian']]
 # We're sort of getting into the data into the shape we want. 
 # But now it's still too humanly readable and redundant.
 ## Cut-away: Computers like it to be simpler, more concise. -_-|||
@@ -132,6 +136,12 @@ english_vocab.add_documents(english_sents)
 
 indo_vocab = Dictionary([['<s>'], ['</s>'], ['UNK']])
 indo_vocab.add_documents(indo_sents)
+
+# english_vocab = Dictionary([['<s>'], ['</s>'],['UNK']])
+# english_vocab.add_documents(english_sents)
+
+# indo_vocab = Dictionary([['<s>'], ['</s>'], ['UNK']])
+# indo_vocab.add_documents(indo_sents)
 
 # First ten words in the vocabulary.
 print('First 10 Indonesian words in Dictionary:\n', sorted(indo_vocab.items())[:10])
@@ -158,12 +168,37 @@ with open('./vocabs/simple_english_vocab.Dictionary.pkl', 'wb') as fout:
     pickle.dump(english_vocab, fout)
 
 # Vectorizes a sentence with a given vocab
+# def vectorize_sent(sent, vocab):
+#     print(type(word_tokenize(sent.lower())))
+#     return vocab.doc2idx([START] + word_tokenize(sent.lower()) + [END], unknown_word_index=2)
+from nltk.tokenize import word_tokenize
+
+# def vectorize_sent(sent, vocab):
+#     if isinstance(sent, str):
+#         tokenized_sent = word_tokenize(sent.lower())
+#     elif isinstance(sent, list):
+#         # If sent is already a list of tokens
+#         tokenized_sent = [token.lower() for token in sent]
+#     else:
+#         raise ValueError("Input 'sent' must be either a string or a list of tokens")
+
+#     return vocab.doc2idx(['<s>']+ tokenized_sent + ['</s>'] , unknown_word_index=2)
+#     # return vocab.doc2idx([START] + tokenized_sent + [END], unknown_word_index=2)
 def vectorize_sent(sent, vocab):
-    return vocab.doc2idx([START] + word_tokenize(sent.lower()) + [END], unknown_word_index=2)
+    if isinstance(sent, str):
+        tokenized_sent = word_tokenize(sent.lower())
+    elif isinstance(sent, list):
+        # If sent is already a list of tokens
+        tokenized_sent = [token.lower() for token in sent]
+    else:
+        raise ValueError("Input 'sent' must be either a string or a list of tokens")
+
+    return vocab.doc2idx(['<s>'] + tokenized_sent + ['</s>'], unknown_word_index=2)
+
 
 # Creates a PyTorch variable from a sentence against a given vocab
-def variable_from_sent(sent, vocab):
-    vsent = vectorize_sent(sent, vocab)
+def variable_from_sent(sentence, vocab):
+    vsent = vectorize_sent(sentence, vocab)
     #print(vsent)
     result = Variable(torch.LongTensor(vsent).view(-1, 1))
     #print(result)
@@ -183,6 +218,8 @@ df_val = df_val.reset_index(drop=True)
 df_train.head()
 
 indo_tensors = df_train['Indonesian'].apply(lambda s: variable_from_sent(s, indo_vocab))
+# indo_tensors = [variable_from_sent(str(s).lower(), indo_vocab) for s in df_train['Indonesian']]
+
 print(df_train.iloc[0]['Indonesian'])
 df_train
 
@@ -297,10 +334,61 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
+    # if use_teacher_forcing:
+    #     # Teacher forcing: Feed the target as the next input
+    #     reference_words = []
+    #     candidate_words = []
+    #     for di in range(target_length):
+    #         decoder_output, decoder_hidden, decoder_attention = decoder(
+    #             decoder_input, decoder_hidden, encoder_outputs)
+    #         topv, topi = decoder_output.data.topk(1)
+    #         if topi.item() == EOS_token:
+    #             reference_words.append('</s>')
+    #             break
+    #         else:
+    #             reference_words.append(indo_vocab.id2token[topi.item()])
+    #         for index in target_tensor[di].data.topk(1):
+    #             candidate_words.append(indo_vocab.id2token[index.item()]) 
+    #         loss += criterion(decoder_output, target_tensor[di])
+    #         #blue_score += sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0))
+    #         print("reference words",reference_words)
+    #         print("candidate words",candidate_words)
+    #         print("blue score:",sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0)))
+    #         decoder_input = target_tensor[di]  # Teacher forcing
+    #     # print("Decoded words",decoded_words)
+    #     # print("candidate words",candidate_words)    
+
+    # else:
+    #     # Without teacher forcing: use its own predictions as the next input
+    #     reference_words = []
+    #     candidate_words = []
+    #     for di in range(target_length):
+    #         decoder_output, decoder_hidden, decoder_attention = decoder(
+    #             decoder_input, decoder_hidden, encoder_outputs)
+    #         topv, topi = decoder_output.topk(1)
+    #         decoder_input = topi.squeeze().detach()  # detach from history as input
+    #         if topi.item() == EOS_token:
+    #             reference_words.append('</s>')
+    #             break
+    #         else:
+    #             reference_words.append(indo_vocab.id2token[topi.item()])
+
+    #         for index in target_tensor[di].data.topk(1):
+    #             candidate_words.append(indo_vocab.id2token[index.item()])
+    #         #print("Decoded words",decoded_words)
+    #         print("reference words",reference_words)
+    #         print("candidate words",candidate_words)
+    #         print("blue score:",sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0)))
+    #         loss += criterion(decoder_output, target_tensor[di])
+    #         #blue_score += sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0))
+    #         if decoder_input.item() == EOS_token:
+    #             break
+    #     # print("Decoded words",decoded_words)
+    #     # print("candidate words",candidate_words)                      
+    reference_words = []
+    candidate_words = []                 
     if use_teacher_forcing:
-        # Teacher forcing: Feed the target as the next input
-        reference_words = []
-        candidate_words = []
+    # Teacher forcing: Feed the target as the next input
         for di in range(target_length):
             decoder_output, decoder_hidden, decoder_attention = decoder(
                 decoder_input, decoder_hidden, encoder_outputs)
@@ -312,43 +400,14 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
                 reference_words.append(indo_vocab.id2token[topi.item()])
             for index in target_tensor[di].data.topk(1):
                 candidate_words.append(indo_vocab.id2token[index.item()]) 
-            loss += criterion(decoder_output, target_tensor[di])
-            #blue_score += sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0))
-            print("reference words",reference_words)
-            print("candidate words",candidate_words)
-            print("blue score:",sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0)))
+
             decoder_input = target_tensor[di]  # Teacher forcing
-        # print("Decoded words",decoded_words)
-        # print("candidate words",candidate_words)    
 
-    else:
-        # Without teacher forcing: use its own predictions as the next input
-        reference_words = []
-        candidate_words = []
-        for di in range(target_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
-            topv, topi = decoder_output.topk(1)
-            decoder_input = topi.squeeze().detach()  # detach from history as input
-            if topi.item() == EOS_token:
-                reference_words.append('</s>')
-                break
-            else:
-                reference_words.append(indo_vocab.id2token[topi.item()])
-
-            for index in target_tensor[di].data.topk(1):
-                candidate_words.append(indo_vocab.id2token[index.item()])
-            #print("Decoded words",decoded_words)
-            print("reference words",reference_words)
-            print("candidate words",candidate_words)
-            print("blue score:",sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0)))
-            loss += criterion(decoder_output, target_tensor[di])
-            #blue_score += sentence_bleu(list(reference_words),candidate_words,weights=(1, 0, 0, 0))
-            if decoder_input.item() == EOS_token:
-                break
-        # print("Decoded words",decoded_words)
-        # print("candidate words",candidate_words)                      
-
+        # Compute BLEU score after the entire sentence is decoded
+        print("reference words", reference_words)
+        print("candidate words", candidate_words)
+        # bleu_score 
+        blue_score
     loss.backward()
 
     encoder_optimizer.step()
